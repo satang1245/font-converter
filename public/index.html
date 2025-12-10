@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <title>폰트 변환 서비스</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="TTF, OTF, WOFF, WOFF2 폰트 파일을 무료로 변환하세요">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 700px;
+      width: 100%;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .subtitle {
+      color: #666;
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    .upload-area {
+      border: 3px dashed #667eea;
+      border-radius: 10px;
+      padding: 40px;
+      text-align: center;
+      margin-bottom: 20px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .upload-area:hover {
+      background: #f8f9ff;
+      border-color: #764ba2;
+    }
+    .upload-area.dragover {
+      background: #f0f2ff;
+      border-color: #764ba2;
+    }
+    input[type="file"] { display: none; }
+    .files-list {
+      margin: 20px 0;
+      max-height: 300px;
+      overflow-y: auto;
+      display: none;
+    }
+    .file-item {
+      padding: 12px;
+      background: #f5f5f5;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .file-item-info {
+      flex: 1;
+      font-size: 14px;
+    }
+    .file-item-remove {
+      background: #ff4444;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .file-item-remove:hover {
+      background: #cc0000;
+    }
+    select, button {
+      width: 100%;
+      padding: 15px;
+      margin: 10px 0;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    select {
+      cursor: pointer;
+      background: white;
+    }
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      transition: transform 0.2s;
+    }
+    button:hover:not(:disabled) {
+      transform: translateY(-2px);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 20px;
+      background: #e8f5e9;
+      border-radius: 8px;
+      display: none;
+    }
+    .error {
+      background: #ffebee;
+      color: #c62828;
+    }
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+      display: none;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .format-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      background: #667eea;
+      color: white;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    .progress-container {
+      display: none;
+      margin: 20px 0;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 30px;
+      background: #f0f0f0;
+      border-radius: 15px;
+      overflow: hidden;
+      position: relative;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      transition: width 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 12px;
+    }
+    .clear-btn {
+      background: #ff6b6b;
+      margin-top: 10px;
+    }
+    .clear-btn:hover:not(:disabled) {
+      background: #ee5a52;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔤 폰트 변환 서비스</h1>
+    <p class="subtitle">여러 개의 폰트 파일을 한번에 변환하세요</p>
+    
+    <div class="upload-area" id="uploadArea">
+      <p style="font-size: 48px; margin-bottom: 10px;">📁</p>
+      <p>클릭하거나 파일을 드래그하여 업로드</p>
+      <p style="font-size: 12px; color: #999; margin-top: 5px;">
+        지원 형식: TTF, OTF, WOFF, WOFF2 (파일당 최대 10MB)
+      </p>
+      <input type="file" id="fileInput" accept=".ttf,.otf,.woff,.woff2" multiple>
+    </div>
+
+    <div class="files-list" id="filesList"></div>
+
+    <select id="targetFormat">
+      <option value="">변환할 형식 선택</option>
+      <option value="ttf">TTF (TrueType Font)</option>
+      <option value="otf">OTF (OpenType Font)</option>
+      <option value="woff">WOFF (Web Open Font Format)</option>
+      <option value="woff2">WOFF2 (Web Open Font Format 2)</option>
+    </select>
+
+    <button id="convertBtn" disabled>변환하기</button>
+    <button id="clearBtn" class="clear-btn" style="display: none;">전체 삭제</button>
+
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill">0%</div>
+      </div>
+      <p style="text-align: center; margin-top: 10px; color: #666;" id="progressText"></p>
+    </div>
+
+    <div class="loader" id="loader"></div>
+    <div class="result" id="result"></div>
+  </div>
+
+  <script>
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const filesList = document.getElementById('filesList');
+    const targetFormat = document.getElementById('targetFormat');
+    const convertBtn = document.getElementById('convertBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const loader = document.getElementById('loader');
+    const result = document.getElementById('result');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    
+    let selectedFiles = [];
+
+    uploadArea.addEventListener('click', () => fileInput.click());
+    
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+      uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        handleFiles(e.dataTransfer.files);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      handleFiles(e.target.files);
+    });
+
+    function handleFiles(files) {
+      for (let file of files) {
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`${file.name}는 10MB를 초과합니다.`);
+          continue;
+        }
+        if (!selectedFiles.find(f => f.name === file.name && f.size === file.size)) {
+          selectedFiles.push(file);
+        }
+      }
+      updateFilesList();
+      fileInput.value = '';
+    }
+
+    function updateFilesList() {
+      if (selectedFiles.length === 0) {
+        filesList.style.display = 'none';
+        clearBtn.style.display = 'none';
+        convertBtn.disabled = true;
+        return;
+      }
+
+      filesList.style.display = 'block';
+      clearBtn.style.display = 'block';
+      
+      filesList.innerHTML = selectedFiles.map((file, index) => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        const sizeKB = (file.size / 1024).toFixed(2);
+        return `
+          <div class="file-item">
+            <div class="file-item-info">
+              <strong>${file.name}</strong><br>
+              <span style="font-size: 12px; color: #666;">
+                ${sizeKB} KB • <span class="format-badge">${ext.toUpperCase()}</span>
+              </span>
+            </div>
+            <button class="file-item-remove" onclick="removeFile(${index})">삭제</button>
+          </div>
+        `;
+      }).join('');
+
+      checkConvertButton();
+    }
+
+    window.removeFile = function(index) {
+      selectedFiles.splice(index, 1);
+      updateFilesList();
+    };
+
+    clearBtn.addEventListener('click', () => {
+      selectedFiles = [];
+      updateFilesList();
+    });
+
+    targetFormat.addEventListener('change', checkConvertButton);
+
+    function checkConvertButton() {
+      convertBtn.disabled = !(selectedFiles.length > 0 && targetFormat.value);
+    }
+
+    convertBtn.addEventListener('click', async () => {
+      if (selectedFiles.length === 0 || !targetFormat.value) return;
+
+      const formData = new FormData();
+      selectedFiles.forEach(file => {
+        formData.append('fonts', file);
+      });
+      formData.append('targetFormat', targetFormat.value);
+
+      convertBtn.disabled = true;
+      progressContainer.style.display = 'block';
+      result.style.display = 'none';
+      progressFill.style.width = '50%';
+      progressFill.textContent = '50%';
+      progressText.textContent = '변환 중...';
+
+      try {
+        const response = await fetch('/api/convert', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || '변환 실패');
+        }
+
+        progressFill.style.width = '100%';
+        progressFill.textContent = '100%';
+        progressText.textContent = '완료!';
+
+        // 파일 다운로드
+        const blob = await response.blob();
+        const contentDisposition = response.headers.get('Content-Disposition');
+        const filenameMatch = contentDisposition && contentDisposition.match(/filename="(.+)"/);
+        const filename = filenameMatch ? filenameMatch[1] : `converted-font-${Date.now()}.zip`;
+
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        result.className = 'result';
+        result.innerHTML = `
+          <strong>✅ 변환 완료!</strong><br><br>
+          <div style="margin: 15px 0;">
+            <strong>변환된 파일:</strong> ${selectedFiles.length}개<br>
+            <strong>다운로드:</strong> ${filename}
+          </div>
+          <p style="font-size: 12px; color: #666; margin-top: 10px;">
+            파일이 자동으로 다운로드되었습니다.
+          </p>
+        `;
+        
+        setTimeout(() => {
+          progressContainer.style.display = 'none';
+        }, 2000);
+
+      } catch (error) {
+        result.className = 'result error';
+        result.innerHTML = `<strong>❌ 오류:</strong> ${error.message}`;
+        progressContainer.style.display = 'none';
+      } finally {
+        result.style.display = 'block';
+        convertBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
