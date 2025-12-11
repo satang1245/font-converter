@@ -1,6 +1,6 @@
-const multiparty = require('multiparty');
 const wawoff2 = require('wawoff2');
 const archiver = require('archiver');
+const { Readable } = require('stream');
 
 // WOFF/WOFF2를 TTF로 변환
 async function convertToTTF(inputBuffer, inputExt) {
@@ -76,35 +76,54 @@ function createZipBuffer(files) {
   });
 }
 
-// 파일 파싱 함수
-function parseForm(req) {
+// Vercel의 파일 파싱
+async function parseMultipartForm(req) {
   return new Promise((resolve, reject) => {
-    const form = new multiparty.Form();
-    const files = [];
-    let targetFormat = '';
+    const chunks = [];
+    
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      try {
+        const buffer = Buffer.concat(chunks);
+        const boundary = req.headers['content-type'].split('boundary=')[1];
+        
+        if (!boundary) {
+          return reject(new Error('No boundary found'));
+        }
 
-    form.on('part', (part) => {
-      if (part.filename) {
-        const chunks = [];
-        part.on('data', (chunk) => chunks.push(chunk));
-        part.on('end', () => {
-          files.push({
-            originalname: part.filename,
-            buffer: Buffer.concat(chunks)
-          });
-        });
-      } else {
-        let value = '';
-        part.on('data', (chunk) => { value += chunk.toString(); });
-        part.on('end', () => {
-          if (part.name === 'targetFormat') targetFormat = value;
-        });
+        const parts = buffer.toString('binary').split(`--${boundary}`);
+        const files = [];
+        let targetFormat = '';
+
+        for (let part of parts) {
+          if (part.includes('Content-Disposition')) {
+            const nameMatch = part.match(/name="([^"]+)"/);
+            const filenameMatch = part.match(/filename="([^"]+)"/);
+            
+            if (filenameMatch) {
+              const filename = filenameMatch[1];
+              const dataStart = part.indexOf('\r\n\r\n') + 4;
+              const dataEnd = part.lastIndexOf('\r\n');
+              const fileData = Buffer.from(part.substring(dataStart, dataEnd), 'binary');
+              
+              files.push({
+                originalname: filename,
+                buffer: fileData
+              });
+            } else if (nameMatch && nameMatch[1] === 'targetFormat') {
+              const dataStart = part.indexOf('\r\n\r\n') + 4;
+              const dataEnd = part.lastIndexOf('\r\n');
+              targetFormat = part.substring(dataStart, dataEnd).trim();
+            }
+          }
+        }
+
+        resolve({ files, targetFormat });
+      } catch (error) {
+        reject(error);
       }
     });
-
-    form.on('close', () => resolve({ files, targetFormat }));
-    form.on('error', reject);
-    form.parse(req);
+    req.on('error', reject);
   });
 }
 
@@ -123,7 +142,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { files, targetFormat } = await parseForm(req);
+    const { files, targetFormat } = await parseMultipartForm(req);
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
@@ -134,7 +153,6 @@ export default async function handler(req, res) {
     }
 
     const convertedFiles = [];
-    let totalSize = 0;
 
     // 각 파일 변환
     for (const file of files) {
@@ -153,8 +171,6 @@ export default async function handler(req, res) {
         buffer: convertedBuffer,
         name: outputFileName
       });
-
-      totalSize += convertedBuffer.length;
     }
 
     if (convertedFiles.length === 0) {

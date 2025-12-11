@@ -10,10 +10,9 @@
   },
   "dependencies": {
     "wawoff2": "^2.0.1",
-    "archiver": "^5.3.1",
-    "multiparty": "^4.2.3"
+    "archiver": "^5.3.1"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18.0.0"
   }
 }
