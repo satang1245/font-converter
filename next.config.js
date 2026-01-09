@@ -5,6 +5,12 @@ const nextConfig = {
       bodySizeLimit: '50mb',
     },
   },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
 }
 
 module.exports = nextConfig
