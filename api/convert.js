@@ -1,8 +1,11 @@
-const wawoff2 = require('wawoff2');
-const archiver = require('archiver');
-const { Readable } = require('stream');
+import wawoff2 from 'wawoff2';
+import archiver from 'archiver';
+import { Readable } from 'stream';
+import zlib from 'zlib';
+import { promisify } from 'util';
 
-// WOFF/WOFF2를 TTF로 변환
+const deflate = promisify(zlib.deflate);
+
 async function convertToTTF(inputBuffer, inputExt) {
   if (inputExt === '.woff2') {
     return await wawoff2.decompress(inputBuffer);
@@ -18,12 +21,14 @@ async function convertToTTF(inputBuffer, inputExt) {
   return inputBuffer;
 }
 
-// TTF를 WOFF2로 변환
 async function convertToWOFF2(ttfBuffer) {
-  return await wawoff2.compress(ttfBuffer);
+  const result = await wawoff2.compress(ttfBuffer);
+  if (!Buffer.isBuffer(result)) {
+    return Buffer.from(result);
+  }
+  return result;
 }
 
-// 폰트 변환 함수
 async function convertFont(inputBuffer, inputExt, targetFormat) {
   let outputBuffer;
   let ttfBuffer = inputBuffer;
@@ -35,30 +40,66 @@ async function convertFont(inputBuffer, inputExt, targetFormat) {
   switch (targetFormat) {
     case 'ttf':
     case 'otf':
-      outputBuffer = ttfBuffer;
+      outputBuffer = Buffer.isBuffer(ttfBuffer) ? ttfBuffer : Buffer.from(ttfBuffer);
       break;
 
     case 'woff2':
       outputBuffer = await convertToWOFF2(ttfBuffer);
+      if (!Buffer.isBuffer(outputBuffer)) {
+        outputBuffer = Buffer.from(outputBuffer);
+      }
       break;
 
     case 'woff':
-      const woffHeader = Buffer.alloc(44);
-      woffHeader.writeUInt32BE(0x774F4646, 0);
-      woffHeader.writeUInt32BE(0x00010000, 4);
-      woffHeader.writeUInt32BE(ttfBuffer.length + 44, 8);
-      woffHeader.writeUInt32BE(ttfBuffer.length, 12);
-      outputBuffer = Buffer.concat([woffHeader, ttfBuffer]);
+      try {
+        let numTables = 0;
+        let flavor = 0x00010000;
+        
+        if (ttfBuffer.length >= 12) {
+          const sfntVersion = ttfBuffer.readUInt32BE(0);
+          numTables = ttfBuffer.readUInt16BE(4);
+          
+          if (sfntVersion === 0x4F54544F || sfntVersion === 0x74727565) {
+            flavor = 0x4F54544F;
+          } else {
+            flavor = 0x00010000;
+          }
+        }
+        
+        if (numTables === 0) {
+          throw new Error('Invalid font file. Cannot read table information.');
+        }
+        
+        const compressedData = await deflate(ttfBuffer);
+        
+        const woffHeader = Buffer.alloc(44);
+        woffHeader.writeUInt32BE(0x774F4646, 0);
+        woffHeader.writeUInt32BE(flavor, 4);
+        woffHeader.writeUInt32BE(compressedData.length + 44, 8);
+        woffHeader.writeUInt16BE(numTables, 12);
+        woffHeader.writeUInt16BE(0, 14);
+        woffHeader.writeUInt32BE(ttfBuffer.length, 16);
+        woffHeader.writeUInt16BE(0, 20);
+        woffHeader.writeUInt16BE(0, 22);
+        woffHeader.writeUInt32BE(0, 24);
+        woffHeader.writeUInt32BE(0, 28);
+        woffHeader.writeUInt32BE(0, 32);
+        woffHeader.writeUInt32BE(0, 36);
+        woffHeader.writeUInt32BE(0, 40);
+        
+        outputBuffer = Buffer.concat([woffHeader, compressedData]);
+      } catch (compressError) {
+        throw new Error(`WOFF conversion failed: ${compressError.message}`);
+      }
       break;
 
     default:
-      throw new Error('지원하지 않는 출력 형식입니다.');
+      throw new Error('Unsupported output format.');
   }
 
   return outputBuffer;
 }
 
-// ZIP 파일 생성
 function createZipBuffer(files) {
   return new Promise((resolve, reject) => {
     const archive = archiver('zip', { zlib: { level: 9 } });
@@ -69,6 +110,12 @@ function createZipBuffer(files) {
     archive.on('error', (err) => reject(err));
 
     files.forEach(({ buffer, name }) => {
+      if (!Buffer.isBuffer(buffer)) {
+        return reject(new Error(`Invalid buffer for file "${name}".`));
+      }
+      if (buffer.length === 0) {
+        return reject(new Error(`Buffer is empty for file "${name}".`));
+      }
       archive.append(buffer, { name });
     });
 
@@ -76,7 +123,6 @@ function createZipBuffer(files) {
   });
 }
 
-// Vercel의 파일 파싱
 async function parseMultipartForm(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -128,7 +174,6 @@ async function parseMultipartForm(req) {
 }
 
 export default async function handler(req, res) {
-  // CORS 설정
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -145,41 +190,48 @@ export default async function handler(req, res) {
     const { files, targetFormat } = await parseMultipartForm(req);
 
     if (!files || files.length === 0) {
-      return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
+      return res.status(400).json({ error: 'No files uploaded.' });
     }
 
     if (!targetFormat || !['ttf', 'otf', 'woff', 'woff2'].includes(targetFormat)) {
-      return res.status(400).json({ error: '올바른 변환 형식을 선택해주세요.' });
+      return res.status(400).json({ error: 'Please select a valid conversion format.' });
     }
 
     const convertedFiles = [];
 
-    // 각 파일 변환
     for (const file of files) {
       const inputExt = file.originalname.substring(file.originalname.lastIndexOf('.')).toLowerCase();
       const baseName = file.originalname.substring(0, file.originalname.lastIndexOf('.'));
       
-      // 같은 형식이면 스킵
       if (inputExt.slice(1) === targetFormat) {
         continue;
       }
 
-      const convertedBuffer = await convertFont(file.buffer, inputExt, targetFormat);
-      const outputFileName = `${baseName}.${targetFormat}`;
-      
-      convertedFiles.push({
-        buffer: convertedBuffer,
-        name: outputFileName
-      });
+      try {
+        const convertedBuffer = await convertFont(file.buffer, inputExt, targetFormat);
+        const outputFileName = `${baseName}.${targetFormat}`;
+        
+        if (!Buffer.isBuffer(convertedBuffer)) {
+          throw new Error(`Invalid converted buffer. Type: ${typeof convertedBuffer}`);
+        }
+        
+        convertedFiles.push({
+          buffer: convertedBuffer,
+          name: outputFileName
+        });
+      } catch (convertError) {
+        return res.status(400).json({ 
+          error: `Error converting file "${file.originalname}": ${convertError.message}` 
+        });
+      }
     }
 
     if (convertedFiles.length === 0) {
       return res.status(400).json({ 
-        error: '변환할 파일이 없습니다. 모든 파일이 이미 대상 형식입니다.' 
+        error: 'No files to convert. All files are already in the target format.' 
       });
     }
 
-    // 단일 파일인 경우 직접 반환
     if (convertedFiles.length === 1) {
       const file = convertedFiles[0];
       res.setHeader('Content-Type', 'application/octet-stream');
@@ -188,7 +240,6 @@ export default async function handler(req, res) {
       return res.send(file.buffer);
     }
 
-    // 여러 파일인 경우 ZIP으로 반환
     const zipBuffer = await createZipBuffer(convertedFiles);
     const zipFileName = `converted-fonts-${Date.now()}.zip`;
     
@@ -198,10 +249,11 @@ export default async function handler(req, res) {
     res.send(zipBuffer);
 
   } catch (error) {
-    console.error('변환 오류:', error);
-    res.status(500).json({ 
-      error: '변환 중 오류가 발생했습니다: ' + error.message 
-    });
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'An error occurred during conversion: ' + error.message 
+      });
+    }
   }
 }
 

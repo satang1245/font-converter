@@ -4,13 +4,15 @@
   "description": "Font converter service for Vercel deployment",
   "main": "api/convert.js",
   "scripts": {
-    "dev": "vercel dev",
+    "dev": "node server.js",
+    "start": "node server.js",
     "build": "echo 'No build step required'",
     "deploy": "vercel --prod"
   },
   "dependencies": {
-    "wawoff2": "^2.0.1",
-    "archiver": "^5.3.1"
+    "archiver": "^5.3.1",
+    "express": "^4.22.1",
+    "wawoff2": "^2.0.1"
   },
   "engines": {
     "node": ">=18.0.0"

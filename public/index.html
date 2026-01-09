@@ -1,15 +1,16 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
-  <title>폰트 변환 서비스</title>
+  <title>Font Converter</title>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="TTF, OTF, WOFF, WOFF2 폰트 파일을 무료로 변환하세요">
+  <meta name="description" content="Convert TTF, OTF, WOFF, WOFF2 font files for free">
+  <script src="./jszip.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #efefef;
       min-height: 100vh;
       display: flex;
       justify-content: center;
@@ -36,8 +37,7 @@
       font-size: 14px;
     }
     .upload-area {
-      border: 3px dashed #667eea;
-      border-radius: 10px;
+      border: 1px dashed #999;
       padding: 40px;
       text-align: center;
       margin-bottom: 20px;
@@ -45,12 +45,12 @@
       transition: all 0.3s;
     }
     .upload-area:hover {
-      background: #f8f9ff;
-      border-color: #764ba2;
+      background: #f5f5f5;
+      border-color: #666;
     }
     .upload-area.dragover {
-      background: #f0f2ff;
-      border-color: #764ba2;
+      background: #e8e8e8;
+      border-color: #555;
     }
     input[type="file"] { display: none; }
     .files-list {
@@ -71,9 +71,10 @@
     .file-item-info {
       flex: 1;
       font-size: 14px;
+      color:#000;
     }
     .file-item-remove {
-      background: #ff4444;
+      background: #000;
       color: white;
       border: none;
       padding: 6px 12px;
@@ -83,7 +84,7 @@
 	  width: 80px;
     }
     .file-item-remove:hover {
-      background: #cc0000;
+      background: #444;
     }
     select, button {
       width: 100%;
@@ -97,8 +98,61 @@
       cursor: pointer;
       background: white;
     }
+    .format-options {
+      background: #f8f8f8;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 10px 0;
+    }
+    .format-options h3 {
+      margin: 0 0 15px 0;
+      color: #333;
+      font-size: 16px;
+    }
+    .format-checkbox-group {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    .format-checkbox-item {
+      display: flex;
+      align-items: center;
+      padding: 12px;
+      background: white;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .format-checkbox-item:hover {
+      border-color: #888;
+      background: #f5f5f5;
+    }
+    .format-checkbox-item input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      margin-right: 10px;
+      cursor: pointer;
+      accent-color: #666;
+    }
+    .format-checkbox-item span {
+      cursor: pointer;
+      flex: 1;
+      font-size: 14px;
+      color: #333;
+      user-select: none;
+    }
+    .format-checkbox-item input[type="checkbox"]:checked + span {
+      font-weight: bold;
+      color: #222;
+    }
+    .format-checkbox-item:has(input[type="checkbox"]:checked) {
+      border-color: #666;
+      background: #e8e8e8;
+    }
     button {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #666 0%, #444 100%);
       color: white;
       border: none;
       cursor: pointer;
@@ -106,6 +160,7 @@
       transition: transform 0.2s;
     }
     button:hover:not(:disabled) {
+      background: linear-gradient(135deg, #555 0%, #333 100%);
       transform: translateY(-2px);
     }
     button:disabled {
@@ -115,17 +170,17 @@
     .result {
       margin-top: 20px;
       padding: 20px;
-      background: #e8f5e9;
+      background: #e8e8e8;
       border-radius: 8px;
       display: none;
     }
     .error {
-      background: #ffebee;
-      color: #c62828;
+      background: #e0e0e0;
+      color: #333;
     }
     .loader {
       border: 4px solid #f3f3f3;
-      border-top: 4px solid #667eea;
+      border-top: 4px solid #666;
       border-radius: 50%;
       width: 40px;
       height: 40px;
@@ -140,7 +195,7 @@
     .format-badge {
       display: inline-block;
       padding: 4px 8px;
-      background: #667eea;
+      background: #666;
       color: white;
       border-radius: 4px;
       font-size: 11px;
@@ -160,7 +215,7 @@
     }
     .progress-fill {
       height: 100%;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #666 0%, #444 100%);
       transition: width 0.3s;
       display: flex;
       align-items: center;
@@ -170,40 +225,54 @@
       font-size: 12px;
     }
     .clear-btn {
-      background: #ff6b6b;
+      background: #888;
       margin-top: 10px;
     }
     .clear-btn:hover:not(:disabled) {
-      background: #ee5a52;
+      background: #666;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🔤 폰트 변환 서비스</h1>
-    <p class="subtitle">여러 개의 폰트 파일을 한번에 변환하세요</p>
+    <h1>Web font converter</h1>
+    <p class="subtitle">Convert multiple font files at once</p>
     
     <div class="upload-area" id="uploadArea">
       <p style="font-size: 48px; margin-bottom: 10px;">📁</p>
-      <p>클릭하거나 파일을 드래그하여 업로드</p>
+      <p>Click or drag and drop files to upload</p>
       <p style="font-size: 12px; color: #999; margin-top: 5px;">
-        지원 형식: TTF, OTF, WOFF, WOFF2 (파일당 최대 10MB)
+        Supported formats: TTF, OTF, WOFF, WOFF2 <br>(max: 10MB per file)
       </p>
       <input type="file" id="fileInput" accept=".ttf,.otf,.woff,.woff2" multiple>
     </div>
 
     <div class="files-list" id="filesList"></div>
 
-    <select id="targetFormat">
-      <option value="">변환할 형식 선택</option>
-      <option value="ttf">TTF (TrueType Font)</option>
-      <option value="otf">OTF (OpenType Font)</option>
-      <option value="woff">WOFF (Web Open Font Format)</option>
-      <option value="woff2">WOFF2 (Web Open Font Format 2)</option>
-    </select>
+    <div class="format-options">
+      <h3>Select formats to convert (multiple selection possible)</h3>
+      <div class="format-checkbox-group">
+        <label class="format-checkbox-item">
+          <input type="checkbox" id="format-ttf" value="ttf">
+          <span>TTF (TrueType Font)</span>
+        </label>
+        <label class="format-checkbox-item">
+          <input type="checkbox" id="format-otf" value="otf">
+          <span>OTF (OpenType Font)</span>
+        </label>
+        <label class="format-checkbox-item">
+          <input type="checkbox" id="format-woff" value="woff">
+          <span>WOFF (Web Open Font Format)</span>
+        </label>
+        <label class="format-checkbox-item">
+          <input type="checkbox" id="format-woff2" value="woff2">
+          <span>WOFF2 (Web Open Font Format 2)</span>
+        </label>
+      </div>
+    </div>
 
-    <button id="convertBtn" disabled>변환하기</button>
-    <button id="clearBtn" class="clear-btn" style="display: none;">전체 삭제</button>
+    <button id="convertBtn" disabled>Convert</button>
+    <button id="clearBtn" class="clear-btn" style="display: none;">Clear All</button>
 
     <div class="progress-container" id="progressContainer">
       <div class="progress-bar">
@@ -220,7 +289,7 @@
     const uploadArea = document.getElementById('uploadArea');
     const fileInput = document.getElementById('fileInput');
     const filesList = document.getElementById('filesList');
-    const targetFormat = document.getElementById('targetFormat');
+    const formatCheckboxes = document.querySelectorAll('input[type="checkbox"][id^="format-"]');
     const convertBtn = document.getElementById('convertBtn');
     const clearBtn = document.getElementById('clearBtn');
     const loader = document.getElementById('loader');
@@ -230,6 +299,12 @@
     const progressText = document.getElementById('progressText');
     
     let selectedFiles = [];
+    
+    function getSelectedFormats() {
+      return Array.from(formatCheckboxes)
+        .filter(cb => cb.checked)
+        .map(cb => cb.value);
+    }
 
     uploadArea.addEventListener('click', () => fileInput.click());
     
@@ -257,7 +332,7 @@
     function handleFiles(files) {
       for (let file of files) {
         if (file.size > 10 * 1024 * 1024) {
-          alert(`${file.name}는 10MB를 초과합니다.`);
+          alert(`${file.name} exceeds 10MB.`);
           continue;
         }
         if (!selectedFiles.find(f => f.name === file.name && f.size === file.size)) {
@@ -290,7 +365,7 @@
                 ${sizeKB} KB • <span class="format-badge">${ext.toUpperCase()}</span>
               </span>
             </div>
-            <button class="file-item-remove" onclick="removeFile(${index})">삭제</button>
+            <button class="file-item-remove" onclick="removeFile(${index})">Remove</button>
           </div>
         `;
       }).join('');
@@ -308,67 +383,132 @@
       updateFilesList();
     });
 
-    targetFormat.addEventListener('change', checkConvertButton);
+    formatCheckboxes.forEach(checkbox => {
+      checkbox.addEventListener('change', checkConvertButton);
+    });
 
     function checkConvertButton() {
-      convertBtn.disabled = !(selectedFiles.length > 0 && targetFormat.value);
+      const selectedFormats = getSelectedFormats();
+      convertBtn.disabled = !(selectedFiles.length > 0 && selectedFormats.length > 0);
     }
 
     convertBtn.addEventListener('click', async () => {
-      if (selectedFiles.length === 0 || !targetFormat.value) return;
-
-      const formData = new FormData();
-      selectedFiles.forEach(file => {
-        formData.append('fonts', file);
-      });
-      formData.append('targetFormat', targetFormat.value);
+      const selectedFormats = getSelectedFormats();
+      if (selectedFiles.length === 0 || selectedFormats.length === 0) return;
 
       convertBtn.disabled = true;
       progressContainer.style.display = 'block';
       result.style.display = 'none';
-      progressFill.style.width = '50%';
-      progressFill.textContent = '50%';
-      progressText.textContent = '변환 중...';
+      progressFill.style.width = '10%';
+      progressFill.textContent = '10%';
+      progressText.textContent = 'Preparing conversion...';
 
       try {
-        const response = await fetch('/api/convert', {
-          method: 'POST',
-          body: formData
-        });
+        const totalFormats = selectedFormats.length;
+        const allConvertedFiles = [];
+        let completedFormats = 0;
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || '변환 실패');
+        for (const format of selectedFormats) {
+          const formData = new FormData();
+          selectedFiles.forEach(file => {
+            formData.append('fonts', file);
+          });
+          formData.append('targetFormat', format);
+
+          progressText.textContent = `Converting... (${format.toUpperCase()}: ${completedFormats + 1}/${totalFormats})`;
+          progressFill.style.width = `${10 + (completedFormats / totalFormats) * 80}%`;
+          progressFill.textContent = `${Math.round(10 + (completedFormats / totalFormats) * 80)}%`;
+
+          const response = await fetch('/api/convert', {
+            method: 'POST',
+            body: formData
+          });
+
+          if (!response.ok) {
+            const contentType = response.headers.get('content-type');
+            let errorMessage = 'Conversion failed';
+            
+            if (contentType && contentType.includes('application/json')) {
+              try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+              } catch (e) {
+                const text = await response.text();
+                errorMessage = text || errorMessage;
+              }
+            } else {
+              const text = await response.text();
+              errorMessage = text || errorMessage;
+            }
+            
+            throw new Error(`${format.toUpperCase()} conversion failed: ${errorMessage}`);
+          }
+
+          const blob = await response.blob();
+          
+          if (response.headers.get('content-type') === 'application/zip') {
+            const zip = await JSZip.loadAsync(blob);
+            
+            for (const [filename, file] of Object.entries(zip.files)) {
+              if (!file.dir) {
+                const fileData = await file.async('blob');
+                allConvertedFiles.push({
+                  name: filename,
+                  blob: fileData
+                });
+              }
+            }
+          } else {
+            const contentDisposition = response.headers.get('Content-Disposition');
+            const filenameMatch = contentDisposition && contentDisposition.match(/filename="(.+)"/);
+            const filename = filenameMatch ? filenameMatch[1] : `converted-font-${Date.now()}.${format}`;
+            
+            allConvertedFiles.push({
+              name: filename,
+              blob: blob
+            });
+          }
+
+          completedFormats++;
         }
 
-        progressFill.style.width = '100%';
-        progressFill.textContent = '100%';
-        progressText.textContent = '완료!';
+        progressFill.style.width = '90%';
+        progressFill.textContent = '90%';
+        progressText.textContent = 'Compressing files...';
 
-        // 파일 다운로드
-        const blob = await response.blob();
-        const contentDisposition = response.headers.get('Content-Disposition');
-        const filenameMatch = contentDisposition && contentDisposition.match(/filename="(.+)"/);
-        const filename = filenameMatch ? filenameMatch[1] : `converted-font-${Date.now()}.zip`;
+        const finalZip = new JSZip();
+        
+        for (const file of allConvertedFiles) {
+          finalZip.file(file.name, file.blob);
+        }
 
-        const url = window.URL.createObjectURL(blob);
+        const finalZipBlob = await finalZip.generateAsync({ type: 'blob' });
+        const finalFilename = `converted-fonts-${Date.now()}.zip`;
+
+        const url = window.URL.createObjectURL(finalZipBlob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename;
+        a.download = finalFilename;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
 
+        progressFill.style.width = '100%';
+        progressFill.textContent = '100%';
+        progressText.textContent = 'Complete!';
+
         result.className = 'result';
         result.innerHTML = `
-          <strong>✅ 변환 완료!</strong><br><br>
+          <strong>✅ Conversion Complete!</strong><br><br>
           <div style="margin: 15px 0;">
-            <strong>변환된 파일:</strong> ${selectedFiles.length}개<br>
-            <strong>다운로드:</strong> ${filename}
+            <strong>Original files:</strong> ${selectedFiles.length}<br>
+            <strong>Converted formats:</strong> ${selectedFormats.map(f => f.toUpperCase()).join(', ')}<br>
+            <strong>Converted files:</strong> ${allConvertedFiles.length}<br>
+            <strong>Download:</strong> ${finalFilename}
           </div>
           <p style="font-size: 12px; color: #666; margin-top: 10px;">
-            파일이 자동으로 다운로드되었습니다.
+            All files have been compressed into a ZIP file and downloaded.
           </p>
         `;
         
@@ -378,7 +518,13 @@
 
       } catch (error) {
         result.className = 'result error';
-        result.innerHTML = `<strong>❌ 오류:</strong> ${error.message}`;
+        const errorMessage = error.message || 'An unknown error occurred';
+        result.innerHTML = `
+          <strong>❌ Error:</strong> ${errorMessage}<br>
+          <p style="font-size: 12px; color: #999; margin-top: 10px;">
+            If the problem persists, please check the browser console (F12).
+          </p>
+        `;
         progressContainer.style.display = 'none';
       } finally {
         result.style.display = 'block';
